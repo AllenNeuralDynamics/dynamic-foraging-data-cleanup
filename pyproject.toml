@@ -1,0 +1,34 @@
+[project]
+name = "dynamic-foraging-data-cleanup"
+version = "0.1.0"
+description = "Small script to run daily and clean up old dynamic foraging datasets if they've been uploaded"
+readme = "README.md"
+authors = [
+    { name = "Patrick Latimer", email = "patrick.latimer@alleninstitute.org" }
+]
+requires-python = "==3.13.*"
+dependencies = [
+    "cyclopts",
+    "loguru>=0.7.3",
+    "pid>=3.0.4",
+    "platformdirs>=4.3.8",
+    "pydantic-settings>=2.10.1",
+    'universal-pathlib',
+    'fsspec[http]',
+    "aind-data-access-api>=1.9.2",
+]
+
+[project.scripts]
+dynamic-foraging-data-cleanup = "dynamic_foraging_data_cleanup.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.0",
+]
+
+[tool.ruff]
+line-length = 120
