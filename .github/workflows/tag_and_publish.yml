@@ -1,0 +1,85 @@
+name: Tag and Publish
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs: 
+  extract_info:
+    runs-on: windows-latest
+    outputs:
+      project_name: ${{ steps.get_info.outputs.PACKAGE_NAME }}
+      project_version: ${{ steps.get_info.outputs.PACKAGE_VERSION }}
+      project_name_underscores: ${{ steps.get_info.outputs.PACKAGE_NAME_UNDERSCORES }}
+      tag_already_exists: ${{ steps.check_existing_tag.outputs.exists }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
+    - name: Get package name and version
+      id: get_info
+      run: |
+        $version = uvx --from=toml-cli toml get --toml-path=pyproject.toml project.version
+        $package_name = uvx --from=toml-cli toml get --toml-path=pyproject.toml project.name
+        echo "PACKAGE_VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "PACKAGE_NAME=$package_name" >> $env:GITHUB_OUTPUT
+        echo "PACKAGE_NAME_UNDERSCORES=$package_name".Replace('-', '_') >> $env:GITHUB_OUTPUT
+        
+    - name: Check if tag exists
+      id: check_existing_tag
+      uses: mukunku/tag-exists-action@v1.6.0
+      with:
+        tag: v${{ steps.get_info.outputs.PACKAGE_VERSION }}
+
+  tag:
+    needs: extract_info
+    if: needs.extract_info.outputs.tag_already_exists == 'false'
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
+    - name: Create Git tag
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -a v${{ needs.extract_info.outputs.project_version }} -m "v${{ needs.extract_info.outputs.project_version }}"
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        git push origin v${{ needs.extract_info.outputs.project_version }}
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ needs.extract_info.outputs.project_version }}
+        name: Release v${{ needs.extract_info.outputs.project_version }}
+        generate_release_notes: true
+        prerelease: ${{ github.ref != 'refs/heads/main' }}
+
+  call-api:
+    runs-on: eng-tools
+    needs: [extract_info, tag]
+    steps: 
+      - name: Trigger gh-pull-agent to pull latest release from this repo on eng-tools
+        run: |
+          $project_name = '${{ needs.extract_info.outputs.project_name_underscores }}'
+          $project_version = '${{ needs.extract_info.outputs.project_version }}'
+          $owner_name = '"${{ github.repository_owner }}"'
+          $repo_name = '"${{ github.event.repository.name }}"'
+          $tag_name = '"v${{ needs.extract_info.outputs.project_version }}"'
+          $json = @{
+            '"owner_name"' = $owner_name
+            '"repo_name"' = $repo_name
+            '"tag_name"' = $tag_name
+          } | ConvertTo-Json -Compress
+          & curl.exe -X PUT "http://eng-tools/gh-pull-agent/api/v1beta/releases/$project_name/$project_version" `
+            -H "accept: application/json" `
+            -H "Content-Type: application/json" `
+            -d $json
+          exit $LASTEXITCODE

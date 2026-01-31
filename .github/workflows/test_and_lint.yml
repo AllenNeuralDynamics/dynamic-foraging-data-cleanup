@@ -1,0 +1,30 @@
+name: Lint and run tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+
+jobs:
+  ci:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: [ '3.12' ]
+    steps:
+    - uses: actions/checkout@v3
+    
+    - uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Run linter checks
+      run: make lint
+
+    - name: Run tests and coverage
+      run: make test

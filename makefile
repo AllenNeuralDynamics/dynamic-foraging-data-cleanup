@@ -8,4 +8,4 @@ test:
 	uv run pytest
 
 schema:
-	uv run sipe-tool-example config-schema --file=./schemas/config_schema.json
+	uv run dynamic-foraging-data-cleanup config-schema --file=./schemas/config_schema.json
