@@ -12,6 +12,7 @@ import time
 import os
 from pathlib import Path
 import shutil
+from typing import Optional
 
 from aind_data_access_api.document_db import MetadataDbClient
 from pydantic import BaseModel
@@ -22,28 +23,52 @@ from dynamic_foraging_data_cleanup.config import Config
 
 
 def data_cleanup(config: Config):
+    """Find and delete datasets if they're safe to delete.
+
+    Deletes datasets older than config.age_limit_days that exist in docdb.
+    Also deletes subfolders within datasets if they have a smaller age_limit
+        specified in config.subfolder_age. This allows deleting large subfolders
+        early and holding onto others for longer
+    """
     data = find_deletable_data_dynamic_frg(
         config.data_directory,
         config.age_limit_days,
         config.too_old_for_warning_days,
+        config.subfolder_age,
     )
     deletable_datasets = [d for d in data if d.ok_to_delete]
 
     logger.info(f"Found {len(data)} total datasets, {len(deletable_datasets)} deletable")
 
     total_deleted_mb = 0
-    for dataset in deletable_datasets:
+    deletable_subfolders = []  # compute this later
+
+    for dataset in data:
         with logger.contextualize(**dataset.model_dump()):
-            if config.actually_delete:
-                logger.info(f"Deleting dataset {dataset.session_name}")
-                with logger.catch(message="Could not remove folder"):
-                    shutil.rmtree(dataset.folder)
-                    total_deleted_mb += dataset.size_mb
+            if dataset.ok_to_delete:
+                if config.actually_delete:
+                    logger.info(f"Deleting dataset {dataset.session_name}")
+                    with logger.catch(message="Could not remove folder"):
+                        shutil.rmtree(dataset.folder)
+                        total_deleted_mb += dataset.size_mb
+                else:
+                    logger.info(f"Identified deletable dataset {dataset.session_name}")
             else:
-                logger.info(f"Identified deletable dataset {dataset.session_name}")
+                for subfolder in dataset.subfolders:
+                    if subfolder.ok_to_delete:
+                        deletable_subfolders.append(subfolder)
+                        if config.actually_delete:
+                            logger.info(f"Deleting subfolder {subfolder.name} in dataset {dataset.session_name}")
+                            with logger.catch(message="Could not remove subfolder"):
+                                shutil.rmtree(subfolder.path)
+                                total_deleted_mb += subfolder.size_mb
+                        else:
+                            logger.info(
+                                f"Identified deletable subfolder {subfolder.name} in dataset {dataset.session_name}"
+                            )
 
     logger.info(
-        f"Deleted {total_deleted_mb} mB of data across {len(deletable_datasets)} datasets",
+        f"Deleted {total_deleted_mb} mB of data across {len(deletable_datasets)} datasets and {len(deletable_subfolders)} subfolders",
         **config.model_dump(),
     )
 
@@ -124,12 +149,21 @@ def calculate_folder_size_mb(folder: Path) -> float:
 #############################
 
 
+class DatasetSubfolder(BaseModel):
+    name: str
+    path: Path
+    age_days: float
+    ok_to_delete: bool = False
+    size_mb: float
+
+
 class Dataset(BaseModel):
     mouse_id: str
     session_name: str
     rig: str
     folder: Path
     folder_age: float
+    subfolders: list[DatasetSubfolder] = []
     exists_in_docdb: bool
     ok_to_delete: bool = False
     size_mb: float
@@ -139,6 +173,7 @@ def find_deletable_data_dynamic_frg(
     data_directory: Path,
     age_limit_days: int = 14,
     too_old_for_warning_days: int = 30,
+    subfolder_age_limits: Optional[dict[str, int]] = None,
 ) -> list[Dataset]:
     """Walk through data in a folder with this structure:
 
@@ -170,7 +205,35 @@ def find_deletable_data_dynamic_frg(
                     size_mb=calculate_folder_size_mb(session_folder),
                 )
                 dataset.ok_to_delete = dataset.folder_age > age_limit_days and dataset.exists_in_docdb
+
+                # Find subfolders
+                if subfolder_age_limits is not None:
+                    dataset.subfolders = find_deletable_subfolders(dataset, subfolder_age_limits)
+
                 data.append(dataset)
                 if age_limit_days < dataset.folder_age < too_old_for_warning_days and not dataset.exists_in_docdb:
                     logger.warning(f"Dataset '{dataset.session_name}' is old but not in docdb")
     return data
+
+
+def find_deletable_subfolders(
+    dataset: Dataset,
+    subfolder_age_limits: dict[str, int],
+) -> list[DatasetSubfolder]:
+    """Find deletable subfolders within a dataset folder"""
+    subfolders = []
+    for subfolder_name, subfolder_age_limit in subfolder_age_limits.items():
+        subfolder_path = dataset.folder / subfolder_name
+        if not subfolder_path.exists():
+            continue
+        subfolder_age = days_since_last_modification(subfolder_path)
+        subfolders.append(
+            DatasetSubfolder(
+                name=subfolder_name,
+                path=subfolder_path,
+                age_days=subfolder_age,
+                ok_to_delete=dataset.exists_in_docdb and subfolder_age > subfolder_age_limit,
+                size_mb=calculate_folder_size_mb(subfolder_path),
+            )
+        )
+    return subfolders

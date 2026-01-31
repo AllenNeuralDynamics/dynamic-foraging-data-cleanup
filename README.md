@@ -2,6 +2,20 @@
 
 This script will delete old data off of dynamic foraging rigs if it has not been modified in some time and if it has successfully been uploaded and registered to the docdb.
 
+It can also be configured to delete especially large subfolders sooner than the whole dataset.
+
+## Configuration
+
+Configuration is stored in SIPE's zookeeper config server, and fetched fresh upon every run. The configuration options are specified in config.py (which also contains sensible defaults). An example configuration file is below:
+
+```yaml
+data_directory: C:/behavior_data
+age_limit_days: 4
+# actually_delete: true
+too_old_for_warning_days: 30
+subfolder_age: {"behavior-videos": 0} # delete large behavior-videos subfolder quicker (if the dataset is in codeocean)
+```
+
 ## Deployment
 
 An ansible playbook to deploy this script lives [here](https://eng-gitlab.corp.alleninstitute.org/infrastructure/mpeci/-/blob/master/ansible/playbooks/install_data_cleanup_script.yml) in the mpeci repo. It doesn't work to run it through the legacy mpe deploy website, but it works if you run it from the command line on eng-tools, which is necessary to mass-deploy anyways.
