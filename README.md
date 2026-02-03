@@ -18,6 +18,13 @@ subfolder_age: {"behavior-videos": 0} # delete large behavior-videos subfolder q
 
 ## Deployment
 
+### One-off tests
+`uvx` can be used to both download and run the tool from the github repo, including optionally from a branch. To test a new feature on a branch, run the following command:
+
+`uvx git+https://github.com/AllenNeuralDynamics/dynamic-foraging-data-cleanup.git@{{ branch }}`
+
+### Formal deployment
+
 An ansible playbook to deploy this script lives [here](https://eng-gitlab.corp.alleninstitute.org/infrastructure/mpeci/-/blob/master/ansible/playbooks/install_data_cleanup_script.yml) in the mpeci repo. It doesn't work to run it through the legacy mpe deploy website, but it works if you run it from the command line on eng-tools, which is necessary to mass-deploy anyways.
 
 Log into eng-tools and move to the ansible folder:
