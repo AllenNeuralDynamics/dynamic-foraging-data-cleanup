@@ -23,10 +23,7 @@ class Config(
     actually_delete: bool = False
     logserver_url: str = "eng-logtools.corp.alleninstitute.org:9000"
     too_old_for_warning_days: int = 30
-    # subfolder_age: dict = {
-    #     "behavior": 14,
-    #     "behavior-videos": 1,
-    # }
+    subfolder_age: dict = {"behavior-videos": 1}  # subfolder-specific age limits in days
 
 
 def config_schema(file: Optional[Path] = None) -> dict:

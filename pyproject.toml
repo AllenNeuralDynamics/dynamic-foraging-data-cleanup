@@ -1,6 +1,6 @@
 [project]
 name = "dynamic-foraging-data-cleanup"
-version = "0.1.0"
+version = "0.1.1"
 description = "Small script to run daily and clean up old dynamic foraging datasets if they've been uploaded"
 readme = "README.md"
 authors = [
